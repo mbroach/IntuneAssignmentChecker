@@ -159,6 +159,48 @@ function Add-IntentTemplateFamilyInfo {
     }
 }
 
+# Define scope tag helpers here so html-export.ps1 works even when dot-sourced
+# from an older version of IntuneAssignmentChecker.ps1 that lacks these functions.
+if (-not (Get-Command Get-ScopeTagLookup -ErrorAction SilentlyContinue)) {
+    function Get-ScopeTagLookup {
+        $lookup = @{ "0" = "Default" }
+        try {
+            $uri = "$script:GraphEndpoint/beta/deviceManagement/roleScopeTags?`$select=id,displayName"
+            do {
+                $response = Invoke-MgGraphRequest -Uri $uri -Method Get
+                foreach ($tag in $response.value) {
+                    $lookup["$($tag.id)"] = $tag.displayName
+                }
+                $uri = $response.'@odata.nextLink'
+            } while ($uri)
+        }
+        catch {
+            Write-Warning "Could not fetch scope tags: $($_.Exception.Message)"
+        }
+        return $lookup
+    }
+}
+
+if (-not (Get-Command Get-ScopeTagNames -ErrorAction SilentlyContinue)) {
+    function Get-ScopeTagNames {
+        param (
+            [object[]]$ScopeTagIds,
+            [hashtable]$ScopeTagLookup
+        )
+        if (-not $ScopeTagIds -or $ScopeTagIds.Count -eq 0) { return "Default" }
+        $names = foreach ($id in $ScopeTagIds) {
+            $key = "$id"
+            if ($ScopeTagLookup.ContainsKey($key)) { $ScopeTagLookup[$key] }
+            else { "Tag:$key" }
+        }
+        return ($names -join ", ")
+    }
+}
+
+if (-not $script:ScopeTagLookup) {
+    $script:ScopeTagLookup = Get-ScopeTagLookup
+}
+
 function Export-HTMLReport {
     param (
         [Parameter(Mandatory = $true)]

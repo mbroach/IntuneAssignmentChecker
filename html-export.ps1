@@ -565,7 +565,7 @@ function Export-HTMLReport {
                         if (filterValue === 'all') {
                             dataTable.column(colIdx).search('').draw();
                         } else {
-                            var escaped = filterValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            var escaped = filterValue.replace(/[.*+?^`${}()|[\]\\]/g, '\\`$&');
                             dataTable.column(colIdx).search('(?:^|,\\s*)' + escaped + '(?:\\s*,|$)', true, false).draw();
                         }
                     }
@@ -582,7 +582,7 @@ function Export-HTMLReport {
                         if (filterValue === 'all') {
                             dataTable.column(colIdx).search('').draw();
                         } else {
-                            var escaped = filterValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            var escaped = filterValue.replace(/[.*+?^`${}()|[\]\\]/g, '\\`$&');
                             dataTable.column(colIdx).search('^' + escaped + '$', true, false).draw();
                         }
                     }

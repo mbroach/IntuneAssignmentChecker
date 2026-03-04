@@ -1,17 +1,10 @@
 $context = Get-MgContext
-if ($null -eq $context) {
-    throw "Not connected to Microsoft Graph. Please run Connect-MgGraph before generating the HTML report."
-}
 $environment = $context.Environment
 
 $GraphEndpoint = switch ($environment) {
-    "Global"    { "https://graph.microsoft.com" }
-    "USGov"     { "https://graph.microsoft.us" }
-    "USGovDoD"  { "https://dod-graph.microsoft.us" }
-    default {
-        Write-Warning "Unknown Graph environment '$environment'. Defaulting to Global endpoint."
-        "https://graph.microsoft.com"
-    }
+    "Global" { "https://graph.microsoft.com" }
+    "USGov" { "https://graph.microsoft.us" }
+    "USGovDoD" { "https://dod-graph.microsoft.us" }
 }
 # Function to get assignment information
 function Get-AssignmentInfo {
@@ -132,12 +125,6 @@ function Get-IntentTemplateFamilyLookup {
     }
 
     return $script:TemplateIdToFamilyCache
-}
-
-function ConvertTo-HtmlEncoded {
-    param ([string]$Text)
-    if ([string]::IsNullOrEmpty($Text)) { return $Text }
-    $Text -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;' -replace "'", '&#39;'
 }
 
 function Add-IntentTemplateFamilyInfo {
@@ -451,7 +438,7 @@ function Export-HTMLReport {
         </div>
 
         <div class="search-box">
-            <div class="row align-items-end mb-2">
+            <div class="row align-items-end">
                 <div class="col-md-6">
                     <div class="form-group">
                         <label for="groupSearch">Search by Group Name:</label>
@@ -472,26 +459,6 @@ function Export-HTMLReport {
                     </div>
                 </div>
             </div>
-            <div class="row align-items-end">
-                <div class="col-md-6">
-                    <div class="form-group">
-                        <label for="scopeTagFilter" class="form-label">Filter by Scope Tag:</label>
-                        <select class="form-select" id="scopeTagFilter">
-                            <option value="all">All Scope Tags</option>
-                            <!-- Scope tag options will be inserted here -->
-                        </select>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="form-group">
-                        <label for="platformFilter" class="form-label">Filter by Platform:</label>
-                        <select class="form-select" id="platformFilter">
-                            <option value="all">All Platforms</option>
-                            <!-- Platform options will be inserted here -->
-                        </select>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <ul class="nav nav-tabs" id="assignmentTabs" role="tablist">
@@ -504,13 +471,13 @@ function Export-HTMLReport {
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.2.2/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.bootstrap5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.html5.min.js"></script>
     <script>
         jQuery(document).ready(function() {
             // Initialize DataTables
@@ -532,59 +499,15 @@ function Export-HTMLReport {
                 ]
             });
 
-            // Helper: find column index by header text
-            function findColumnIndex(dataTable, headerText) {
-                return dataTable.columns().header().toArray().findIndex(function(h) {
-                    return h.textContent.trim() === headerText;
-                });
-            }
-
             // Assignment Type Filter
             jQuery('#assignmentTypeFilter').on('change', function() {
                 const filterValue = jQuery(this).val();
                 jQuery('.policy-table').each(function() {
                     const dataTable = jQuery(this).DataTable();
-                    var colIdx = findColumnIndex(dataTable, 'Assignment Type');
-                    if (colIdx >= 0) {
-                        if (filterValue === 'all') {
-                            dataTable.column(colIdx).search('').draw();
-                        } else {
-                            dataTable.column(colIdx).search(filterValue, false, false).draw();
-                        }
-                    }
-                });
-            });
-
-            // Scope Tag Filter
-            jQuery('#scopeTagFilter').on('change', function() {
-                const filterValue = jQuery(this).val();
-                jQuery('.policy-table').each(function() {
-                    const dataTable = jQuery(this).DataTable();
-                    var colIdx = findColumnIndex(dataTable, 'Scope Tags');
-                    if (colIdx >= 0) {
-                        if (filterValue === 'all') {
-                            dataTable.column(colIdx).search('').draw();
-                        } else {
-                            var escaped = filterValue.replace(/[.*+?^`${}()|[\]\\]/g, '\\`$&');
-                            dataTable.column(colIdx).search('(?:^|,\\s*)' + escaped + '(?:\\s*,|$)', true, false).draw();
-                        }
-                    }
-                });
-            });
-
-            // Platform Filter
-            jQuery('#platformFilter').on('change', function() {
-                const filterValue = jQuery(this).val();
-                jQuery('.policy-table').each(function() {
-                    const dataTable = jQuery(this).DataTable();
-                    var colIdx = findColumnIndex(dataTable, 'Platform');
-                    if (colIdx >= 0) {
-                        if (filterValue === 'all') {
-                            dataTable.column(colIdx).search('').draw();
-                        } else {
-                            var escaped = filterValue.replace(/[.*+?^`${}()|[\]\\]/g, '\\`$&');
-                            dataTable.column(colIdx).search('^' + escaped + '$', true, false).draw();
-                        }
+                    if (filterValue === 'all') {
+                        dataTable.search('').columns().search('').draw();
+                    } else {
+                        dataTable.column(1).search(filterValue, false, false).draw();
                     }
                 });
             });
@@ -642,8 +565,6 @@ function Export-HTMLReport {
             Name           = $config.displayName
             ID             = $config.id
             Type           = "Device Configuration"
-            Platform       = Get-PolicyPlatform -Policy $config
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $config.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -662,8 +583,6 @@ function Export-HTMLReport {
             Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
             ID             = $policy.id
             Type           = "Settings Catalog"
-            Platform       = Get-PolicyPlatform -Policy $policy
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -678,8 +597,6 @@ function Export-HTMLReport {
             Name           = $template.displayName
             ID             = $template.id
             Type           = "Administrative Template"
-            Platform       = Get-PolicyPlatform -Policy $template
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $template.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -694,8 +611,6 @@ function Export-HTMLReport {
             Name           = $policy.displayName
             ID             = $policy.id
             Type           = "Compliance Policy"
-            Platform       = Get-PolicyPlatform -Policy $policy
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -728,8 +643,6 @@ function Export-HTMLReport {
                     Name           = $policy.displayName
                     ID             = $policy.id
                     Type           = "App Protection Policy ($($policyType.Split('.')[-1].Replace('ManagedAppProtection','')))"
-                    Platform       = Get-PolicyPlatform -Policy $policy
-                    ScopeTags      = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
                     AssignmentType = $assignmentInfo.Type
                     AssignedTo     = $assignmentInfo.Target
                 }
@@ -750,8 +663,6 @@ function Export-HTMLReport {
             Name           = $script.displayName
             ID             = $script.id
             Type           = "PowerShell Script"
-            Platform       = "Windows"
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $script.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -767,8 +678,6 @@ function Export-HTMLReport {
             Name           = $script.displayName
             ID             = $script.id
             Type           = "Proactive Remediation Script"
-            Platform       = "Windows"
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $script.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -784,8 +693,6 @@ function Export-HTMLReport {
             Name           = $profile.displayName
             ID             = $profile.id
             Type           = "Autopilot Deployment Profile"
-            Platform       = "Windows"
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $profile.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -802,8 +709,6 @@ function Export-HTMLReport {
             Name           = $esp.displayName
             ID             = $esp.id
             Type           = "Enrollment Status Page"
-            Platform       = "Windows"
-            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $esp.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
             AssignmentType = $assignmentInfo.Type
             AssignedTo     = $assignmentInfo.Target
         }
@@ -820,8 +725,6 @@ function Export-HTMLReport {
                 Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
                 ID             = $policy.id
                 Type           = "Windows 365 Cloud PC Provisioning Policy"
-                Platform       = "Windows"
-                ScopeTags      = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
                 AssignmentType = $assignmentInfo.Type
                 AssignedTo     = $assignmentInfo.Target
             }
@@ -842,8 +745,6 @@ function Export-HTMLReport {
                 Name           = if (-not [string]::IsNullOrWhiteSpace($setting.displayName)) { $setting.displayName } else { $setting.name }
                 ID             = $setting.id
                 Type           = "Windows 365 Cloud PC User Setting"
-                Platform       = "Windows"
-                ScopeTags      = Get-ScopeTagNames -ScopeTagIds $setting.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
                 AssignmentType = $assignmentInfo.Type
                 AssignedTo     = $assignmentInfo.Target
             }
@@ -863,17 +764,13 @@ function Export-HTMLReport {
         @{ Name = "Account Protection"; Key = "AccountProtectionProfiles"; TemplateFamily = "endpointSecurityAccountProtection"; UserFriendlyType = "Account Protection Profile" }
     )
 
-    # Fetch once outside the loop to avoid 6x redundant API calls per collection
-    $allConfigPoliciesForES = Get-IntuneEntities -EntityType "configurationPolicies"
-    $allIntentPoliciesForES = Get-IntuneEntities -EntityType "deviceManagement/intents"
-    Add-IntentTemplateFamilyInfo -IntentPolicies $allIntentPoliciesForES
-
     foreach ($esCategory in $endpointSecurityCategories) {
         Write-Host "Fetching Endpoint Security - $($esCategory.Name) Policies..." -ForegroundColor Yellow
         $processedIds = [System.Collections.Generic.HashSet[string]]::new()
 
         # 1. Check configurationPolicies (Settings Catalog)
-        $configPolicies = $allConfigPoliciesForES | Where-Object { $_.templateReference -and $_.templateReference.templateFamily -eq $esCategory.TemplateFamily }
+        $allConfigPolicies = Get-IntuneEntities -EntityType "configurationPolicies"
+        $configPolicies = $allConfigPolicies | Where-Object { $_.templateReference -and $_.templateReference.templateFamily -eq $esCategory.TemplateFamily }
         if ($configPolicies) {
             foreach ($policy in $configPolicies) {
                 if ($processedIds.Add($policy.id)) {
@@ -883,8 +780,6 @@ function Export-HTMLReport {
                         Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
                         ID             = $policy.id
                         Type           = $esCategory.UserFriendlyType
-                        Platform       = Get-PolicyPlatform -Policy $policy
-                        ScopeTags      = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
                         AssignmentType = $assignmentInfo.Type
                         AssignedTo     = $assignmentInfo.Target
                     }
@@ -893,7 +788,9 @@ function Export-HTMLReport {
         }
 
         # 2. Check deviceManagement/intents (Templates)
-        $intentPolicies = $allIntentPoliciesForES | Where-Object { $_.templateReference -and $_.templateReference.templateFamily -eq $esCategory.TemplateFamily }
+        $allIntentPolicies = Get-IntuneEntities -EntityType "deviceManagement/intents"
+        Add-IntentTemplateFamilyInfo -IntentPolicies $allIntentPolicies
+        $intentPolicies = $allIntentPolicies | Where-Object { $_.templateReference -and $_.templateReference.templateFamily -eq $esCategory.TemplateFamily }
         if ($intentPolicies) {
             foreach ($policy in $intentPolicies) {
                 if ($processedIds.Add($policy.id)) {
@@ -904,8 +801,6 @@ function Export-HTMLReport {
                             Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
                             ID             = $policy.id
                             Type           = $esCategory.UserFriendlyType
-                            Platform       = Get-PolicyPlatform -Policy $policy
-                            ScopeTags      = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
                             AssignmentType = $assignmentInfo.Type
                             AssignedTo     = $assignmentInfo.Target
                         }
@@ -920,18 +815,12 @@ function Export-HTMLReport {
 
     # Get Apps
     Write-Host "Fetching Applications..." -ForegroundColor Yellow
-    $allApps = @()
-    try {
-        $appUri = "$GraphEndpoint/beta/deviceAppManagement/mobileApps?`$filter=isAssigned eq true"
-        $appResponse = Invoke-MgGraphRequest -Uri $appUri -Method Get
-        $allApps = $appResponse.value
-        while ($appResponse.'@odata.nextLink') {
-            $appResponse = Invoke-MgGraphRequest -Uri $appResponse.'@odata.nextLink' -Method Get
-            $allApps += $appResponse.value
-        }
-    }
-    catch {
-        Write-Warning "Error fetching applications: $($_.Exception.Message)"
+    $appUri = "$GraphEndpoint/beta/deviceAppManagement/mobileApps?`$filter=isAssigned eq true"
+    $appResponse = Invoke-MgGraphRequest -Uri $appUri -Method Get
+    $allApps = $appResponse.value
+    while ($appResponse.'@odata.nextLink') {
+        $appResponse = Invoke-MgGraphRequest -Uri $appResponse.'@odata.nextLink' -Method Get
+        $allApps += $appResponse.value
     }
 
     foreach ($app in $allApps) {
@@ -942,14 +831,7 @@ function Export-HTMLReport {
 
         $appId = $app.id
         $assignmentsUri = "$GraphEndpoint/beta/deviceAppManagement/mobileApps('$appId')/assignments"
-        $assignmentResponse = $null
-        try {
-            $assignmentResponse = Invoke-MgGraphRequest -Uri $assignmentsUri -Method Get
-        }
-        catch {
-            Write-Warning "Error fetching assignments for app '$($app.displayName)': $($_.Exception.Message)"
-            continue
-        }
+        $assignmentResponse = Invoke-MgGraphRequest -Uri $assignmentsUri -Method Get
 
         foreach ($assignment in $assignmentResponse.value) {
             # Get-AssignmentInfo expects an array of assignment objects.
@@ -962,10 +844,8 @@ function Export-HTMLReport {
                 Name           = $app.displayName
                 ID             = $app.id
                 Type           = "Application"
-                Platform       = Get-PolicyPlatform -Policy $app
-                ScopeTags      = Get-ScopeTagNames -ScopeTagIds $app.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
-                AssignmentType = $assignmentInfo.Type
-                AssignedTo     = $assignmentInfo.Target
+                AssignmentType = $assignmentInfo.Type 
+                AssignedTo     = $assignmentInfo.Target 
             }
 
             switch ($assignment.intent) {
@@ -975,38 +855,6 @@ function Export-HTMLReport {
             }
         }
     }
-
-    # Collect unique scope tags across all policies
-    $allScopeTags = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($catKey in $policies.Keys) {
-        foreach ($p in $policies[$catKey]) {
-            if ($p.ScopeTags) {
-                foreach ($tag in ($p.ScopeTags -split ',')) {
-                    $trimmed = $tag.Trim()
-                    if ($trimmed) { [void]$allScopeTags.Add($trimmed) }
-                }
-            }
-        }
-    }
-    $scopeTagOptions = ($allScopeTags | Sort-Object | ForEach-Object {
-        $escaped = $_ -replace '&', '&amp;' -replace "'", '&#39;' -replace '<', '&lt;' -replace '>', '&gt;'
-        "<option value='$escaped'>$escaped</option>"
-    }) -join "`n                            "
-
-    # Collect unique platforms across all policies
-    $allPlatforms = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($catKey in $policies.Keys) {
-        foreach ($p in $policies[$catKey]) {
-            if ($p.Platform) {
-                $trimmed = $p.Platform.Trim()
-                if ($trimmed) { [void]$allPlatforms.Add($trimmed) }
-            }
-        }
-    }
-    $platformOptions = ($allPlatforms | Sort-Object | ForEach-Object {
-        $escaped = $_ -replace '&', '&amp;' -replace "'", '&#39;' -replace '<', '&lt;' -replace '>', '&gt;'
-        "<option value='$escaped'>$escaped</option>"
-    }) -join "`n                            "
 
     # Generate summary statistics
     $summaryStats = @{
@@ -1081,6 +929,7 @@ function Export-HTMLReport {
         if ($category.Key -eq 'all') {
             $allTableRows = foreach ($cat in $categories | Where-Object { $_.Key -ne 'all' }) {
                 if ($policies.ContainsKey($cat.Key)) {
+                    # Ensure category exists in policies
                     $categoryPolicies = $policies[$cat.Key]
                     if ($categoryPolicies) {
                         foreach ($p in $categoryPolicies) {
@@ -1092,11 +941,9 @@ function Export-HTMLReport {
                                 default { 'badge-none' }
                             }
                             "<tr>
-                                <td>$(ConvertTo-HtmlEncoded $p.Name)</td>
-                                <td>$(ConvertTo-HtmlEncoded $p.Platform)</td>
-                                <td>$(ConvertTo-HtmlEncoded $p.ScopeTags)</td>
+                                <td>$($p.Name)</td>
                                 <td><span class='badge $badgeClass'>$($p.AssignmentType)</span></td>
-                                <td>$(ConvertTo-HtmlEncoded $p.AssignedTo)</td>
+                                <td>$($p.AssignedTo)</td>
                             </tr>"
                         }
                     }
@@ -1112,8 +959,6 @@ function Export-HTMLReport {
             <thead>
                 <tr>
                     <th>Name</th>
-                    <th>Platform</th>
-                    <th>Scope Tags</th>
                     <th>Assignment Type</th>
                     <th>Assigned To</th>
                 </tr>
@@ -1129,8 +974,10 @@ function Export-HTMLReport {
         else {
             $tableRows = "" # Initialize to empty string
             if ($policies.ContainsKey($category.Key)) {
+                # Check if category exists
                 $currentCategoryPolicies = $policies[$category.Key]
                 if ($currentCategoryPolicies) {
+                    # Check if there are policies for this category
                     $tableRows = foreach ($p in $currentCategoryPolicies) {
                         $badgeClass = switch ($p.AssignmentType) {
                             'All Users' { 'badge-all-users' }
@@ -1140,20 +987,13 @@ function Export-HTMLReport {
                             default { 'badge-none' }
                         }
                         "<tr>
-                            <td>$(ConvertTo-HtmlEncoded $p.Name)</td>
-                            <td>$(ConvertTo-HtmlEncoded $p.Platform)</td>
-                            <td>$(ConvertTo-HtmlEncoded $p.ScopeTags)</td>
+                            <td>$($p.Name)</td>
                             <td><span class='badge $badgeClass'>$($p.AssignmentType)</span></td>
-                            <td>$(ConvertTo-HtmlEncoded $p.AssignedTo)</td>
+                            <td>$($p.AssignedTo)</td>
                         </tr>"
                     }
                 }
             }
-            $categoryHeaders = "<th>Name</th>
-                    <th>Platform</th>
-                    <th>Scope Tags</th>
-                    <th>Assignment Type</th>
-                    <th>Assigned To</th>"
             $tabContent += @"
 <div class='tab-pane fade$(if($isActive -and $category.Key -ne 'all'){ ' show active' } else { '' })'
      id='$categoryId'
@@ -1163,7 +1003,9 @@ function Export-HTMLReport {
         <table class='table table-striped policy-table'>
             <thead>
                 <tr>
-                    $categoryHeaders
+                    <th>Name</th>
+                    <th>Assignment Type</th>
+                    <th>Assigned To</th>
                 </tr>
             </thead>
             <tbody>
@@ -1339,9 +1181,7 @@ function Export-HTMLReport {
         -replace '<!-- Tab headers will be inserted here -->', $tabHeaders `
         -replace '<!-- Tab content will be inserted here -->', $tabContent `
         -replace '<!-- Summary stats will be inserted here -->', $summaryCards `
-        -replace '<!-- Policy overview chart placeholder -->', $chartBlock `
-        -replace '<!-- Scope tag options will be inserted here -->', $scopeTagOptions `
-        -replace '<!-- Platform options will be inserted here -->', $platformOptions
+        -replace '<!-- Policy overview chart placeholder -->', $chartBlock
 
     # Output file
     $htmlContent | Out-File -FilePath $FilePath -Encoding UTF8

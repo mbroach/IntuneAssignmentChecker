@@ -2,30 +2,20 @@
 #Requires -Modules Microsoft.Graph.Authentication
 
 <#PSScriptInfo
-.VERSION 3.8.1
+.VERSION 3.7.0
 .GUID c6e25ec6-5787-45ef-95af-8abeb8a17daf
 .AUTHOR ugurk
 .PROJECTURI https://github.com/ugurkocde/IntuneAssignmentChecker
 .DESCRIPTION
 This script enables IT administrators to efficiently analyze and audit Intune assignments. It checks assignments for specific users, groups, or devices, displays all policies and their assignments, identifies unassigned policies, detects empty groups in assignments, and searches for specific settings across policies.
 .RELEASENOTES
-Version 3.8.1:
-- Add Platform filter dropdown to HTML report (Fixes #103)
-
-Version 3.8.0:
-- Handle multiple Entra ID devices with the same display name with interactive selection (Fixes #94)
-- Support device lookup by Object ID (GUID) to bypass display name ambiguity
-- Add Scope Tag filter dropdown to HTML report (Fixes #85, #96)
-- Add Platform column to "All Policies & Apps" tab in HTML report (Fixes #96)
-- Fix Assignment Type filter targeting wrong column in HTML report
-
-Version 3.7.1:
+Version 3.5.0:
 - Fixed macOS policies not being returned in group checks (Fixes #92)
 - Added CloudPC.Read.All scope for Windows 365 provisioning policies (Fixes #89)
 - Fixed Cloud PC provisioning policies URI format and suppressed W365 warnings for unlicensed tenants (Fixes #88)
 - Fixed App Protection Policies not being reported (Fixes #69)
 - Fixed CSV/Excel export to include app assignments (Required, Available, Uninstall) (Fixes #93)
-- Fixed  export path issues on Windows (System32) and macOS (Fixes #83, #81)
+- Fixed HTML export path issues on Windows (System32) and macOS (Fixes #83, #81)
 - Fixed CSV export dialog hanging on macOS/Linux - now cross-platform (Fixes #43)
 - Disk encryption profiles now work correctly (Fixes #77)
 - Improved 403 permission error messages with specific scope guidance (Fixes #30)
@@ -142,10 +132,7 @@ param(
     [string]$Environment = "Global",
 
     [Parameter(Mandatory = $false, HelpMessage = "Include assignments inherited from parent groups")]
-    [switch]$IncludeNestedGroups,
-
-    [Parameter(Mandatory = $false, HelpMessage = "Filter results by scope tag name")]
-    [string]$ScopeTagFilter
+    [switch]$IncludeNestedGroups
 )
 
 # Check if any command-line parameters were provided
@@ -284,12 +271,12 @@ $clientSecret = if ($ClientSecret) { $ClientSecret } else { '' } # Client Secret
 ####################################################################################################
 
 # Version of the local script
-$localVersion = "3.8.1"
+$localVersion = "3.5.0"
 
 Write-Host "🔍 INTUNE ASSIGNMENT CHECKER" -ForegroundColor Cyan
 Write-Host "Made by Ugur Koc with" -NoNewline; Write-Host " ❤️  and ☕" -NoNewline
 Write-Host " | Version" -NoNewline; Write-Host " $localVersion" -ForegroundColor Yellow -NoNewline
-Write-Host " | Last updated: " -NoNewline; Write-Host "2026-03-02" -ForegroundColor Magenta
+Write-Host " | Last updated: " -NoNewline; Write-Host "2025-10-22" -ForegroundColor Magenta
 Write-Host ""
 Write-Host "📢 Feedback & Issues: " -NoNewline -ForegroundColor Cyan
 Write-Host "https://github.com/ugurkocde/IntuneAssignmentChecker/issues" -ForegroundColor White
@@ -505,10 +492,6 @@ try {
         @{
             Permission = "CloudPC.Read.All"
             Reason     = "Required to read Windows 365 Cloud PC provisioning policies and settings (optional if W365 not licensed)"
-        },
-        @{
-            Permission = "DeviceManagementRBAC.Read.All"
-            Reason     = "Required to read role scope tags for scope tag display and filtering"
         }
     )
 
@@ -1019,51 +1002,6 @@ function Get-PolicyPlatform {
     }
 }
 
-function Get-ScopeTagLookup {
-    $lookup = @{ "0" = "Default" }
-    try {
-        $uri = "$script:GraphEndpoint/beta/deviceManagement/roleScopeTags?`$select=id,displayName"
-        do {
-            $response = Invoke-MgGraphRequest -Uri $uri -Method Get
-            foreach ($tag in $response.value) {
-                $lookup["$($tag.id)"] = $tag.displayName
-            }
-            $uri = $response.'@odata.nextLink'
-        } while ($uri)
-    }
-    catch {
-        Write-Warning "Could not fetch scope tags: $($_.Exception.Message)"
-    }
-    return $lookup
-}
-
-function Get-ScopeTagNames {
-    param (
-        [object[]]$ScopeTagIds,
-        [hashtable]$ScopeTagLookup
-    )
-    if (-not $ScopeTagIds -or $ScopeTagIds.Count -eq 0) { return "Default" }
-    $names = foreach ($id in $ScopeTagIds) {
-        $key = "$id"
-        if ($ScopeTagLookup.ContainsKey($key)) { $ScopeTagLookup[$key] }
-        else { "Tag:$key" }
-    }
-    return ($names -join ", ")
-}
-
-function Filter-ByScopeTag {
-    param (
-        [object[]]$Items,
-        [string]$FilterTag,
-        [hashtable]$ScopeTagLookup
-    )
-    if ([string]::IsNullOrWhiteSpace($FilterTag)) { return $Items }
-    return @($Items | Where-Object {
-        $names = Get-ScopeTagNames -ScopeTagIds $_.roleScopeTagIds -ScopeTagLookup $ScopeTagLookup
-        ($names -split ', ') -contains $FilterTag
-    })
-}
-
 function Test-PlatformCompatibility {
     param (
         [string]$DeviceOS,
@@ -1160,42 +1098,15 @@ function Get-DeviceInfo {
         [string]$DeviceName
     )
 
-    $selectProps = "id,displayName,operatingSystem,operatingSystemVersion,managementType,deviceOwnership,trustType,isCompliant,isManaged,approximateLastSignInDateTime,manufacturer,model,enrollmentProfileName"
-    $escapedName = $DeviceName -replace "'", "''"
-    $deviceUri = "$GraphEndpoint/beta/devices?`$filter=displayName eq '$escapedName'&`$select=$selectProps"
-    try {
-        $deviceResponse = Invoke-MgGraphRequest -Uri $deviceUri -Method Get
-    }
-    catch {
-        return @{
-            Id              = $null
-            DisplayName     = $DeviceName
-            OperatingSystem = $null
-            Success         = $false
-            MultipleFound   = $false
-            AllDevices      = $null
-        }
-    }
+    $deviceUri = "$GraphEndpoint/v1.0/devices?`$filter=displayName eq '$DeviceName'"
+    $deviceResponse = Invoke-MgGraphRequest -Uri $deviceUri -Method Get
 
-    if ($deviceResponse.value.Count -gt 1) {
-        return @{
-            Id              = $null
-            DisplayName     = $DeviceName
-            OperatingSystem = $null
-            Success         = $false
-            MultipleFound   = $true
-            AllDevices      = $deviceResponse.value
-        }
-    }
-
-    if ($deviceResponse.value.Count -eq 1) {
+    if ($deviceResponse.value) {
         return @{
             Id              = $deviceResponse.value[0].id
             DisplayName     = $deviceResponse.value[0].displayName
             OperatingSystem = $deviceResponse.value[0].operatingSystem
             Success         = $true
-            MultipleFound   = $false
-            AllDevices      = $null
         }
     }
 
@@ -1204,8 +1115,6 @@ function Get-DeviceInfo {
         DisplayName     = $DeviceName
         OperatingSystem = $null
         Success         = $false
-        MultipleFound   = $false
-        AllDevices      = $null
     }
 }
 
@@ -1661,7 +1570,6 @@ function Add-ExportData {
         $null = $ExportData.Add([PSCustomObject]@{
                 Category         = $Category
                 Item             = "$itemName (ID: $($item.id))"
-                ScopeTags        = Get-ScopeTagNames -ScopeTagIds $item.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
                 AssignmentReason = $reason
             })
     }
@@ -1680,7 +1588,6 @@ function Add-AppExportData {
         $null = $ExportData.Add([PSCustomObject]@{
                 Category         = $Category
                 Item             = "$appName (ID: $($app.id))"
-                ScopeTags        = Get-ScopeTagNames -ScopeTagIds $app.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
                 AssignmentReason = "$AssignmentReason - $($app.AssignmentIntent)"
             })
     }
@@ -1785,9 +1692,6 @@ function Switch-Tenant {
             Write-Host "`nSuccessfully connected to new tenant!" -ForegroundColor Green
             Write-Host "Tenant: $script:CurrentTenantName" -ForegroundColor White
             Write-Host "User: $script:CurrentUserUPN" -ForegroundColor White
-
-            # Refresh scope tag lookup for the new tenant
-            $script:ScopeTagLookup = Get-ScopeTagLookup
         }
     }
     catch {
@@ -1828,8 +1732,7 @@ function Export-ResultsIfRequested {
     }
 }
 
-# Initialize scope tag lookup (available to main script and dot-sourced modules)
-$script:ScopeTagLookup = Get-ScopeTagLookup
+# Move this code to the beginning of the script, right after the param block
 
 # Main script logic
 do {
@@ -2501,13 +2404,6 @@ do {
                 }
                 catch {
                     Write-Verbose "Skipping - Windows 365 may not be licensed for this tenant"
-                }
-
-                # Apply scope tag filter if specified
-                if ($ScopeTagFilter) {
-                    foreach ($key in @($relevantPolicies.Keys)) {
-                        $relevantPolicies[$key] = @(Filter-ByScopeTag -Items $relevantPolicies[$key] -FilterTag $ScopeTagFilter -ScopeTagLookup $script:ScopeTagLookup)
-                    }
                 }
 
                 # Display results
@@ -3779,13 +3675,6 @@ do {
                     Write-Verbose "Skipping - Windows 365 may not be licensed for this tenant"
                 }
 
-                # Apply scope tag filter if specified
-                if ($ScopeTagFilter) {
-                    foreach ($key in @($relevantPolicies.Keys)) {
-                        $relevantPolicies[$key] = @(Filter-ByScopeTag -Items $relevantPolicies[$key] -FilterTag $ScopeTagFilter -ScopeTagLookup $script:ScopeTagLookup)
-                    }
-                }
-
                 # Function to format and display policy table (specific to Option 2)
                 function Format-PolicyTable {
                     param (
@@ -3793,7 +3682,7 @@ do {
                         [object[]]$Policies,
                         [scriptblock]$GetName
                     )
-                    $localTableSeparator = "-" * 140
+                    $localTableSeparator = "-" * 120 # Use a local variable for separator
 
                     # Create prominent section header
                     $headerSeparator = "-" * ($Title.Length + 16)
@@ -3809,7 +3698,7 @@ do {
                     }
 
                     # Create table header
-                    $headerFormat = "{0,-40} {1,-15} {2,-20} {3,-30} {4,-35}" -f "Policy Name", "Platform", "Scope Tags", "ID", "Assignment"
+                    $headerFormat = "{0,-45} {1,-20} {2,-35} {3,-40}" -f "Policy Name", "Platform", "ID", "Assignment"
 
                     Write-Host $headerFormat -ForegroundColor Yellow
                     Write-Host $localTableSeparator -ForegroundColor Gray
@@ -3818,21 +3707,18 @@ do {
                     foreach ($policy in $Policies) {
                         $name = & $GetName $policy
 
-                        if ($name.Length -gt 37) { $name = $name.Substring(0, 34) + "..." }
+                        if ($name.Length -gt 42) { $name = $name.Substring(0, 39) + "..." }
 
                         $platform = Get-PolicyPlatform -Policy $policy
-                        if ($platform.Length -gt 12) { $platform = $platform.Substring(0, 9) + "..." }
-
-                        $scopeTags = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
-                        if ($scopeTags.Length -gt 17) { $scopeTags = $scopeTags.Substring(0, 14) + "..." }
+                        if ($platform.Length -gt 17) { $platform = $platform.Substring(0, 14) + "..." }
 
                         $id = $policy.id
-                        if ($id.Length -gt 27) { $id = $id.Substring(0, 24) + "..." }
+                        if ($id.Length -gt 32) { $id = $id.Substring(0, 29) + "..." }
 
                         $assignment = if ($policy.AssignmentReason) { $policy.AssignmentReason } else { "N/A" }
-                        if ($assignment.Length -gt 32) { $assignment = $assignment.Substring(0, 29) + "..." }
+                        if ($assignment.Length -gt 37) { $assignment = $assignment.Substring(0, 34) + "..." }
 
-                        $rowFormat = "{0,-40} {1,-15} {2,-20} {3,-30} {4,-35}" -f $name, $platform, $scopeTags, $id, $assignment
+                        $rowFormat = "{0,-45} {1,-20} {2,-35} {3,-40}" -f $name, $platform, $id, $assignment
                         if ($assignment -match "Inherited Exclusion") {
                             Write-Host $rowFormat -ForegroundColor Magenta
                         }
@@ -4026,76 +3912,8 @@ do {
             foreach ($deviceName in $deviceNames) {
                 Write-Host "`nProcessing device: $deviceName" -ForegroundColor Yellow
 
-                # Check if input is a GUID (Object ID)
-                $deviceInfo = $null
-                if ($deviceName -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
-                    try {
-                        $selectProps = "id,displayName,operatingSystem,operatingSystemVersion,managementType,deviceOwnership,trustType,isCompliant,isManaged,approximateLastSignInDateTime,manufacturer,model,enrollmentProfileName"
-                        $directDevice = Invoke-MgGraphRequest -Uri "$GraphEndpoint/beta/devices/$($deviceName)?`$select=$selectProps" -Method Get
-                        $deviceInfo = @{
-                            Id              = $directDevice.id
-                            DisplayName     = $directDevice.displayName
-                            OperatingSystem = $directDevice.operatingSystem
-                            Success         = $true
-                            MultipleFound   = $false
-                            AllDevices      = $null
-                        }
-                    }
-                    catch {
-                        Write-Host "No device found with Object ID: $deviceName" -ForegroundColor Red
-                        continue
-                    }
-                }
-                else {
-                    # Get Device Info by display name
-                    $deviceInfo = Get-DeviceInfo -DeviceName $deviceName
-                }
-
-                # Handle multiple devices found
-                if ($deviceInfo.MultipleFound) {
-                    if ($parameterMode) {
-                        Write-Host "Multiple devices found with name '$deviceName'. Please use the Object ID instead:" -ForegroundColor Red
-                        foreach ($d in $deviceInfo.AllDevices) {
-                            $lastSignIn = if ($d.approximateLastSignInDateTime) { ([datetime]$d.approximateLastSignInDateTime).ToString("yyyy-MM-dd") } else { "N/A" }
-                            Write-Host "  - $($d.displayName) | OS: $($d.operatingSystem) $($d.operatingSystemVersion) | Trust: $($d.trustType) | Ownership: $($d.deviceOwnership) | Last sign-in: $lastSignIn | ID: $($d.id)" -ForegroundColor Yellow
-                        }
-                        continue
-                    }
-
-                    Write-Host "`nMultiple devices found with name '$deviceName':" -ForegroundColor Yellow
-                    Write-Host ""
-                    for ($i = 0; $i -lt $deviceInfo.AllDevices.Count; $i++) {
-                        $d = $deviceInfo.AllDevices[$i]
-                        $lastSignIn = if ($d.approximateLastSignInDateTime) { ([datetime]$d.approximateLastSignInDateTime).ToString("yyyy-MM-dd") } else { "N/A" }
-                        $managedStatus = if ($d.isManaged) { "Managed" } else { "Not managed" }
-                        $compliantStatus = if ($d.isCompliant) { "Compliant" } else { "Not compliant" }
-                        Write-Host "  [$($i + 1)] $($d.displayName)" -ForegroundColor Cyan
-                        Write-Host "      OS: $($d.operatingSystem) $($d.operatingSystemVersion) | Trust: $($d.trustType) | Ownership: $($d.deviceOwnership)" -ForegroundColor Gray
-                        Write-Host "      $managedStatus | $compliantStatus | Last sign-in: $lastSignIn" -ForegroundColor Gray
-                        Write-Host "      Object ID: $($d.id)" -ForegroundColor Gray
-                    }
-                    Write-Host "  [0] Skip this device" -ForegroundColor Gray
-                    Write-Host ""
-                    Write-Host "Select a device (1-$($deviceInfo.AllDevices.Count)) or 0 to skip: " -ForegroundColor Cyan -NoNewline
-                    $selection = Read-Host
-
-                    if ($selection -match '^\d+$' -and [int]$selection -ge 1 -and [int]$selection -le $deviceInfo.AllDevices.Count) {
-                        $selectedDevice = $deviceInfo.AllDevices[[int]$selection - 1]
-                        $deviceInfo = @{
-                            Id              = $selectedDevice.id
-                            DisplayName     = $selectedDevice.displayName
-                            OperatingSystem = $selectedDevice.operatingSystem
-                            Success         = $true
-                            MultipleFound   = $false
-                            AllDevices      = $null
-                        }
-                    }
-                    else {
-                        Write-Host "Skipping device: $deviceName" -ForegroundColor Yellow
-                        continue
-                    }
-                }
-
+                # Get Device Info
+                $deviceInfo = Get-DeviceInfo -DeviceName $deviceName
                 if (-not $deviceInfo.Success) {
                     Write-Host "Device not found: $deviceName" -ForegroundColor Red
                     Write-Host "Please verify the device name is correct." -ForegroundColor Yellow
@@ -4787,13 +4605,6 @@ do {
                     }
                 }
 
-                # Apply scope tag filter if specified
-                if ($ScopeTagFilter) {
-                    foreach ($key in @($relevantPolicies.Keys)) {
-                        $relevantPolicies[$key] = @(Filter-ByScopeTag -Items $relevantPolicies[$key] -FilterTag $ScopeTagFilter -ScopeTagLookup $script:ScopeTagLookup)
-                    }
-                }
-
                 # Display results
                 Write-Host "`nAssignments for Device: $deviceName" -ForegroundColor Green
 
@@ -4804,7 +4615,7 @@ do {
                         [object[]]$Policies,
                         [scriptblock]$GetName
                     )
-                    $tableSeparator = "-" * 130
+                    $tableSeparator = "-" * 120 # Define at the start for use in empty case
 
                     # Create prominent section header
                     $headerSeparator = "-" * ($Title.Length + 16)
@@ -4814,39 +4625,40 @@ do {
 
                     if ($Policies.Count -eq 0) {
                         Write-Host "No $Title found for this device." -ForegroundColor Gray
-                        Write-Host $tableSeparator -ForegroundColor Gray
+                        Write-Host $tableSeparator -ForegroundColor Gray # Print bottom line for empty table
                         Write-Host ""
                         return
                     }
 
-                    # Create table header
-                    $headerFormat = "{0,-45} {1,-20} {2,-35} {3,-30}" -f "Policy Name", "Scope Tags", "ID", "Assignment"
+                    # Create table header with custom formatting (this is for when policies exist)
+                    $headerFormat = "{0,-50} {1,-40} {2,-30}" -f "Policy Name", "ID", "Assignment"
 
                     Write-Host $headerFormat -ForegroundColor Yellow
-                    Write-Host $tableSeparator -ForegroundColor Gray
+                    Write-Host $tableSeparator -ForegroundColor Gray # This is the line under the headers
 
                     # Display each policy in table format
                     foreach ($policy in $Policies) {
                         $name = & $GetName $policy
 
-                        if ($name.Length -gt 42) {
-                            $name = $name.Substring(0, 39) + "..."
+                        # Truncate long names and add ellipsis
+                        if ($name.Length -gt 47) {
+                            $name = $name.Substring(0, 44) + "..."
                         }
 
-                        $scopeTags = Get-ScopeTagNames -ScopeTagIds $policy.roleScopeTagIds -ScopeTagLookup $script:ScopeTagLookup
-                        if ($scopeTags.Length -gt 17) { $scopeTags = $scopeTags.Substring(0, 14) + "..." }
-
+                        # Format ID
                         $id = $policy.id
-                        if ($id.Length -gt 32) {
-                            $id = $id.Substring(0, 29) + "..."
+                        if ($id.Length -gt 37) {
+                            $id = $id.Substring(0, 34) + "..."
                         }
 
+                        # Format assignment reason
                         $assignment = if ($policy.AssignmentReason) { $policy.AssignmentReason } else { "No Assignment" }
                         if ($assignment.Length -gt 27) {
                             $assignment = $assignment.Substring(0, 24) + "..."
                         }
 
-                        $rowFormat = "{0,-45} {1,-20} {2,-35} {3,-30}" -f $name, $scopeTags, $id, $assignment
+                        # Output formatted row
+                        $rowFormat = "{0,-50} {1,-40} {2,-30}" -f $name, $id, $assignment
                         if ($assignment -eq "Excluded" -or $assignment -like "*Exclusion*") {
                             Write-Host $rowFormat -ForegroundColor Red
                         }
@@ -4855,7 +4667,7 @@ do {
                         }
                     }
 
-                    Write-Host $tableSeparator -ForegroundColor Gray
+                    Write-Host $tableSeparator -ForegroundColor Gray # This is the closing line of the table
                 }
 
                 # Display Device Configurations
@@ -5625,13 +5437,6 @@ do {
             }
             $allPolicies.AccountProtectionProfiles = $accountProtectionPoliciesFoundAll
 
-            # Apply scope tag filter if specified
-            if ($ScopeTagFilter) {
-                foreach ($key in @($allPolicies.Keys)) {
-                    $allPolicies[$key] = @(Filter-ByScopeTag -Items $allPolicies[$key] -FilterTag $ScopeTagFilter -ScopeTagLookup $script:ScopeTagLookup)
-                }
-            }
-
             # Display all policies and their assignments
             Invoke-PolicyAssignments -Policies $allPolicies.DeviceConfigs -DisplayName "Device Configurations"
             Invoke-PolicyAssignments -Policies $allPolicies.SettingsCatalog -DisplayName "Settings Catalog Policies"
@@ -6107,13 +5912,6 @@ do {
                 if ($assignments | Where-Object { $_.Reason -eq "All Users" }) {
                     $esp | Add-Member -NotePropertyName 'AssignmentReason' -NotePropertyValue "All Users" -Force
                     $allUsersAssignments.ESPProfiles += $esp
-                }
-            }
-
-            # Apply scope tag filter if specified
-            if ($ScopeTagFilter) {
-                foreach ($key in @($allUsersAssignments.Keys)) {
-                    $allUsersAssignments[$key] = @(Filter-ByScopeTag -Items $allUsersAssignments[$key] -FilterTag $ScopeTagFilter -ScopeTagLookup $script:ScopeTagLookup)
                 }
             }
 
@@ -6795,13 +6593,6 @@ do {
             }
             $allDevicesAssignments.AccountProtectionProfiles = $accountProtectionPoliciesFound_AllDevices
 
-            # Apply scope tag filter if specified
-            if ($ScopeTagFilter) {
-                foreach ($key in @($allDevicesAssignments.Keys)) {
-                    $allDevicesAssignments[$key] = @(Filter-ByScopeTag -Items $allDevicesAssignments[$key] -FilterTag $ScopeTagFilter -ScopeTagLookup $script:ScopeTagLookup)
-                }
-            }
-
             # Display results
             Write-Host "`nPolicies Assigned to All Devices:" -ForegroundColor Green
 
@@ -7063,7 +6854,7 @@ do {
             Write-Host "Generating HTML Report..." -ForegroundColor Green
 
             # Download html-export.ps1 from GitHub
-            $htmlExportUrl = "https://raw.githubusercontent.com/mbroach/IntuneAssignmentChecker/main/html-export.ps1"
+            $htmlExportUrl = "https://raw.githubusercontent.com/ugurkocde/IntuneAssignmentChecker/main/html-export.ps1"
             # Use cross-platform temp path
             $tempDir = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { [System.IO.Path]::GetTempPath() }
             $scriptPath = Join-Path $tempDir 'html-export.ps1'
@@ -7325,13 +7116,6 @@ do {
             }
             $unassignedApps = $unassignedApps | Where-Object { -not $_.isFeatured -and -not $_.isBuiltIn }
             $unassignedPolicies.Apps = $unassignedApps
-
-            # Apply scope tag filter if specified
-            if ($ScopeTagFilter) {
-                foreach ($key in @($unassignedPolicies.Keys)) {
-                    $unassignedPolicies[$key] = @(Filter-ByScopeTag -Items $unassignedPolicies[$key] -FilterTag $ScopeTagFilter -ScopeTagLookup $script:ScopeTagLookup)
-                }
-            }
 
             # Display results
             Write-Host "`nPolicies and Apps Without Assignments:" -ForegroundColor Green

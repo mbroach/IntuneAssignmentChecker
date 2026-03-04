@@ -25,7 +25,7 @@ Version 3.7.1:
 - Fixed Cloud PC provisioning policies URI format and suppressed W365 warnings for unlicensed tenants (Fixes #88)
 - Fixed App Protection Policies not being reported (Fixes #69)
 - Fixed CSV/Excel export to include app assignments (Required, Available, Uninstall) (Fixes #93)
-- Fixed HTML export path issues on Windows (System32) and macOS (Fixes #83, #81)
+- Fixed  export path issues on Windows (System32) and macOS (Fixes #83, #81)
 - Fixed CSV export dialog hanging on macOS/Linux - now cross-platform (Fixes #43)
 - Disk encryption profiles now work correctly (Fixes #77)
 - Improved 403 permission error messages with specific scope guidance (Fixes #30)
@@ -7063,7 +7063,7 @@ do {
             Write-Host "Generating HTML Report..." -ForegroundColor Green
 
             # Download html-export.ps1 from GitHub
-            $htmlExportUrl = "https://raw.githubusercontent.com/ugurkocde/IntuneAssignmentChecker/main/html-export.ps1"
+            $htmlExportUrl = "https://raw.githubusercontent.com/mbroach/IntuneAssignmentChecker/main/html-export.ps1"
             # Use cross-platform temp path
             $tempDir = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { [System.IO.Path]::GetTempPath() }
             $scriptPath = Join-Path $tempDir 'html-export.ps1'
